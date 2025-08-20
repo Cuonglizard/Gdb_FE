@@ -1,9 +1,9 @@
 import React from "react";
 import GdbApi from "./GdbApi";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
 import { store } from "statorgfc";
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 import constants from "./constants";
 import Actions from "./Actions";
 

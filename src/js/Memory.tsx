@@ -10,7 +10,7 @@ import GdbApi from "./GdbApi";
 import constants from "./constants";
 import ReactTable from "./ReactTable";
 // @ts-expect-error ts-migrate(2691) FIXME: An import path cannot end with a '.tsx' extension.... Remove this comment to see the full error message
-import MemoryLink from "./MemoryLink.tsx";
+import MemoryLink from "./MemoryLink";
 import Actions from "./Actions";
 import React from "react";
 
