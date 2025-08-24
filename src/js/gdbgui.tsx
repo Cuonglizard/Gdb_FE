@@ -6,11 +6,25 @@
  *
  */
 
-/* global Split */
-/* global initial_data */
-/* global debug */
+// Import globals first
+import "./globals";
 
-import ReactDOM from "react-dom";
+// Mock initial_data for development
+if (typeof window !== 'undefined' && typeof (window as any).initial_data === 'undefined') {
+  (window as any).initial_data = {
+    csrf_token: 'dev_csrf_token_' + Math.random().toString(36).substr(2, 9),
+    gdbpid: 12345,
+    gdb_command: 'gdb',
+    gdbgui_version: '0.15.0.0-dev',
+    themes: ['monokai', 'light', 'vim', 'emacs'],
+    initial_binary_and_args: ['']
+  };
+}
+
+// Create global initial_data reference
+const initial_data = (window as any).initial_data || {};
+
+import { createRoot } from "react-dom/client";
 import React from "react";
 // @ts-expect-error ts-migrate(2305) FIXME: Module '"statorgfc"' has no exported member 'middl... Remove this comment to see the full error message
 import { store, middleware } from "statorgfc";
@@ -34,13 +48,15 @@ import "../../public/static/css/gdbgui.css";
 import "../../public/static/css/splitjs-gdbgui.css";
 import { Terminals } from "./Terminals";
 
+// Define debug variable for development
+const debug = import.meta.env.DEV;
+
 const store_options = {
   immutable: false,
   debounce_ms: 10
 };
 // @ts-expect-error ts-migrate(2339) FIXME: Property 'initialize' does not exist on type '{ ge... Remove this comment to see the full error message
 store.initialize(initial_store_data, store_options);
-// @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'debug'.
 if (debug) {
   // log call store changes in console except if changed key was in
   // constants.keys_to_not_log_changes_in_console
@@ -57,11 +73,6 @@ if (debug) {
 window.store = store;
 
 class Gdbgui extends React.PureComponent {
-  componentWillMount() {
-    GdbApi.init();
-    GlobalEvents.init();
-    FileOps.init(); // this should be initialized before components that use store key 'source_code_state'
-  }
   render() {
     return (
       <div className="splitjs_container">
@@ -127,11 +138,14 @@ class Gdbgui extends React.PureComponent {
     );
   }
   componentDidMount() {
-    // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'debug'.
+    // Initialize GdbApi first (async)
+    this.initializeApp();
+    
     if (debug) {
       // @ts-expect-error ts-migrate(2339) FIXME: Property 'getUnwatchedKeys' does not exist on type... Remove this comment to see the full error message
       console.warn(store.getUnwatchedKeys());
     }
+
     // Split the body into different panes using splitjs (https://github.com/nathancahill/Split.js)
     // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'Split'.
     let middle_panes_split_obj = Split(
@@ -175,6 +189,22 @@ class Gdbgui extends React.PureComponent {
       });
     }
   }
+
+  async initializeApp() {
+    try {
+      await GdbApi.init();
+      GlobalEvents.init();
+      FileOps.init(); // this should be initialized before components that use store key 'source_code_state'
+    } catch (error) {
+      console.error('Failed to initialize GdbApi:', error);
+    }
+  }
 }
 
-ReactDOM.render(<Gdbgui />, document.getElementById("gdbgui"));
+const container = document.getElementById("root");
+if (container) {
+  const root = createRoot(container);
+  root.render(<Gdbgui />);
+} else {
+  console.error("Could not find root element to mount React app");
+}

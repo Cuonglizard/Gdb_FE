@@ -5,10 +5,11 @@ import Actions from "./Actions";
 import React from "react"; // needed for jsx
 void React;
 
+// Define debug variable for development
+const debug = import.meta.env.DEV;
+
 let debug_print: any;
-// @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'debug'.
 if (debug) {
-  /* global debug */
   debug_print = console.info;
 } else {
   debug_print = function() {

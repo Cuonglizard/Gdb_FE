@@ -1,6 +1,7 @@
-/* global initial_data */
-/* global debug */
 import constants from "./constants";
+
+// Define debug variable for development
+const debug = import.meta.env.DEV;
 
 /**
  * The initial store data. Keys cannot be added after initialization.
@@ -9,16 +10,13 @@ import constants from "./constants";
  */
 const initial_store_data = {
   // environment
-  // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'debug'.
   debug: debug, // if gdbgui is run in debug mode
-  // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'initial_data'.
-  gdbgui_version: initial_data.gdbgui_version,
+  gdbgui_version: window.initial_data?.gdbgui_version || "unknown",
   latest_gdbgui_version: "(not fetched)",
   gdb_version: "unknown", // this is parsed from gdb's output
   gdb_version_array: [], // this is parsed from gdb's output
   gdb_pid: undefined,
-  // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'initial_data'.
-  gdb_command: initial_data.gdb_command,
+  gdb_command: window.initial_data?.gdb_command || "",
   can_fetch_register_values: true, // set to false if using Rust and gdb v7.12.x (see https://github.com/cs01/gdbgui/issues/64)
   show_settings: false,
 
@@ -35,17 +33,14 @@ const initial_store_data = {
   textarea_to_copy_to_clipboard: {}, // will be replaced with textarea dom node
 
   // preferences
-  // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'initial_data'.
-  themes: initial_data.themes,
-  // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'initial_data'.
-  current_theme: localStorage.getItem("theme") || initial_data.themes[0],
+  themes: window.initial_data?.themes || ["monokai"],
+  current_theme: localStorage.getItem("theme") || window.initial_data?.themes?.[0] || "monokai",
   highlight_source_code: true, // get saved boolean to highlight source code
   max_lines_of_code_to_fetch: constants.default_max_lines_of_code_to_fetch,
   auto_add_breakpoint_to_main: true,
 
   pretty_print: true, // whether gdb should "pretty print" variables. There is an option for this in Settings
   refresh_state_after_sending_console_command: true, // If true, send commands to refresh GUI store after each command is sent from console
-  // @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'debug'.
   show_all_sent_commands_in_console: debug, // show all sent commands if in debug mode
 
   inferior_program: constants.inferior_states.unknown,

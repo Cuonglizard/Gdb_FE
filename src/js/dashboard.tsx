@@ -1,4 +1,4 @@
-import ReactDOM from "react-dom";
+import { createRoot } from "react-dom/client";
 import React, { useState } from "react";
 import "../../public/static/css/tailwind copy.css";
 
@@ -249,4 +249,10 @@ class Dashboard extends React.PureComponent<any, { sessions: GdbguiSession[] }> 
   }
 }
 
-ReactDOM.render(<Dashboard />, document.getElementById("dashboard"));
+const container = document.getElementById("root");
+if (container) {
+  const root = createRoot(container);
+  root.render(<Dashboard />);
+} else {
+  console.error("Could not find root element to mount React app");
+}

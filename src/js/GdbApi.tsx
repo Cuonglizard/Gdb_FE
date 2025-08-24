@@ -12,7 +12,9 @@ import process_gdb_response from "./process_gdb_response";
 import React from "react";
 import io from "socket.io-client";
 void React; // needed when using JSX, but not marked as used
-/* global debug */
+
+// Define debug variable for development
+const debug = import.meta.env.DEV;
 
 // print to console if debug is true
 let log: {
@@ -21,7 +23,6 @@ let log: {
   (message?: any, ...optionalParams: any[]): void;
   (): void;
 };
-// @ts-expect-error ts-migrate(2304) FIXME: Cannot find name 'debug'.
 if (debug) {
   log = console.info;
 } else {
@@ -34,26 +35,89 @@ if (debug) {
  * This object contains methods to interact with
  * gdb, but does not directly render anything in the DOM.
  */
-// @ts-expect-error ts-migrate(2339) FIXME: Property 'initial_data' does not exist on type 'Wi... Remove this comment to see the full error message
-const initial_data = window.initial_data;
-let socket: SocketIOClient.Socket;
+// Mock initial_data for development when running separate frontend
+const initial_data = window.initial_data || {
+  csrf_token: "dev_csrf_token_123",
+  gdbpid: 12345,
+  gdb_command: "gdb",
+  gdbgui_version: "0.15.0.0-dev",
+  themes: ["monokai", "light", "vim", "emacs"]
+};
+
+import { Socket } from "socket.io-client";
+let socket: Socket;
 const GdbApi = {
   getSocket: function() {
     return socket;
   },
-  init: function() {
-    const TIMEOUT_MIN = 5;
-    socket = io.connect(`/gdb_listener`, {
+  
+  // Fetch CSRF token from backend explicit endpoint. If it fails, log and surface error to user.
+  fetchCsrfToken: async function(): Promise<string | null> {
+    try {
+      const resp = await fetch('/get_csrf_token', { credentials: 'include' });
+      if (!resp.ok) {
+        const msg = `Failed to get CSRF token. HTTP ${resp.status}`;
+        console.error(msg);
+        Actions.add_console_entries(msg, constants.console_entry_type.STD_ERR);
+        return null;
+      }
+      const json = await resp.json();
+      if (json && json.csrf_token) {
+        return json.csrf_token as string;
+      }
+      const msg = 'Backend did not return csrf_token field';
+      console.error(msg, json);
+      Actions.add_console_entries(msg, constants.console_entry_type.STD_ERR);
+      return null;
+    } catch (e: any) {
+      const msg = 'Exception fetching CSRF token: ' + (e && e.message ? e.message : e);
+      console.error(msg);
+      Actions.add_console_entries(msg, constants.console_entry_type.STD_ERR);
+      return null;
+    }
+  },
+  
+  // Fetch initial data from backend
+  fetchInitialData: async function(): Promise<any> {
+    // 1. Get/refresh CSRF token
+    const token = await GdbApi.fetchCsrfToken();
+    if (token) {
+      (initial_data as any).csrf_token = token;
+    }
+    return initial_data;
+  },
+
+  init: async function() {
+    // Get initial data (ensures csrf_token present before socket connect)
+    const data = await this.fetchInitialData();
+    if (!data || !data.csrf_token) {
+      Actions.add_console_entries('Missing CSRF token; aborting socket connection.', constants.console_entry_type.STD_ERR);
+      return;
+    }
+    
+  const TIMEOUT_MIN = 5;
+  // Use relative namespace so it shares the current origin (vite dev server proxies to backend).
+  // If you explicitly want to bypass proxy, set VITE_BACKEND_SOCKET_ORIGIN (e.g. http://localhost:5000)
+  const socketOrigin = import.meta.env.VITE_BACKEND_SOCKET_ORIGIN;
+  const namespace = '/gdb_listener';
+  const connectUrl = socketOrigin ? `${socketOrigin}${namespace}` : namespace;
+  socket = io(connectUrl, {
       timeout: TIMEOUT_MIN * 60 * 1000,
       query: {
-        csrf_token: initial_data.csrf_token,
-        gdbpid: initial_data.gdbpid,
-        gdb_command: initial_data.gdb_command
-      }
+        csrf_token: data.csrf_token,
+        gdbpid: data.gdbpid,
+        gdb_command: data.gdb_command
+      },
+      transports: ['websocket', 'polling'],
+      reconnectionDelayMax: 5000,
     });
+    socket.on('connect_error', (err: any) => {
+      log('connect_error to ' + namespace + ': ' + err.message);
+    });
+    socket.on('reconnect_attempt', (n: number) => log('reconnect_attempt #' + n));
 
     socket.on("connect", function() {
-      log("connected");
+      log("connected to listener socket");
       const queuedGdbCommands = store.get("queuedGdbCommands");
       if (queuedGdbCommands) {
         GdbApi.run_gdb_command(queuedGdbCommands);
@@ -62,10 +126,19 @@ const GdbApi = {
     });
 
     socket.on("gdb_response", function(response_array: any) {
-      // @ts-expect-error ts-migrate(2769) FIXME: Argument of type 'null' is not assignable to param... Remove this comment to see the full error message
-      clearTimeout(GdbApi._waiting_for_response_timeout);
+      if (GdbApi._waiting_for_response_timeout) {
+        clearTimeout(GdbApi._waiting_for_response_timeout);
+        GdbApi._waiting_for_response_timeout = null;
+      }
       store.set("waiting_for_response", false);
       process_gdb_response(response_array);
+      // Run any one‑time logic after the very first response (e.g. hide splash, analytics, etc.)
+      if (!GdbApi._received_first_gdb_response) {
+        GdbApi._received_first_gdb_response = true;
+        if (GdbApi.onFirstGdbResponse) {
+          try { GdbApi.onFirstGdbResponse(response_array); } catch (e) { console.error(e); }
+        }
+      }
     });
     socket.on("fatal_server_error", function(data: { message: null | string }) {
       Actions.add_console_entries(
@@ -149,7 +222,12 @@ const GdbApi = {
       // }
     });
   },
-  _waiting_for_response_timeout: null,
+  // Timeout handle (cleared when a gdb_response arrives)
+  _waiting_for_response_timeout: null as ReturnType<typeof setTimeout> | null,
+  // Has at least one gdb_response been received this session?
+  _received_first_gdb_response: false,
+  // Optional callback hook you can assign externally: GdbApi.onFirstGdbResponse = (resp)=>{...}
+  onFirstGdbResponse: null as null | ((resp: any)=>void),
   click_run_button: function() {
     Actions.inferior_program_starting();
     GdbApi.run_gdb_command("-exec-run");
@@ -261,9 +339,9 @@ const GdbApi = {
   waiting_for_response: function() {
     store.set("waiting_for_response", true);
     const WAIT_TIME_SEC = 10;
-    // @ts-expect-error ts-migrate(2769) FIXME: Argument of type 'null' is not assignable to param... Remove this comment to see the full error message
-    clearTimeout(GdbApi._waiting_for_response_timeout);
-    // @ts-expect-error ts-migrate(2322) FIXME: Type 'Timeout' is not assignable to type 'null'.
+    if (GdbApi._waiting_for_response_timeout) {
+      clearTimeout(GdbApi._waiting_for_response_timeout);
+    }
     GdbApi._waiting_for_response_timeout = setTimeout(() => {
       Actions.clear_program_state();
       store.set("waiting_for_response", false);
